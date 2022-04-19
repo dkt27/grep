@@ -2,10 +2,8 @@ package org.example;
 
 import org.apache.commons.cli.*;
 import java.io.*;
-import java.util.ArrayList;
-import java.util.List;
-import java.util.ListIterator;
-import java.util.Objects;
+import java.util.*;
+import java.util.stream.Collectors;
 
 
 public class Main {
@@ -22,7 +20,7 @@ TODO: сделать подсчет строк до, после, номер ст
     /**
      * Display usage information
      */
-    public static void PrintHelp(Options options){
+    public static void printHelp(Options options){
             HelpFormatter formatter = new HelpFormatter();
             formatter.printHelp("This is a simple little grep - Search for [Expression] in the input [File]\n" +
                     "Usage: grep [-n] [-f File] [Expression] [File]",options);
@@ -32,12 +30,12 @@ TODO: сделать подсчет строк до, после, номер ст
      * Build Options and return it
      * @return Options object containing lis of defined options
      */
-    public static Options OptionBuilder(){
+    public static Options optionBuilder(){
         Options options = new Options();
 
-        //options.addOption("A","after-contex",true,"Print num lines of leading context after each match.  See also the -A and -C options");
-        //options.addOption("B","before-context",true,"Print num lines of leading context before each match.  See also the -A and -C options");
-        //options.addOption("C","context",true,"Print num lines of leading and trailing context surrounding each match.  The default is 2 and is equivalent to -A 2 -B 2.");
+        options.addOption("A","after-contex",true,"Print num lines of leading context after each match.  See also the -A and -C options");
+        options.addOption("B","before-context",true,"Print num lines of leading context before each match.  See also the -A and -C options");
+        options.addOption("C","context",true,"Print num lines of leading and trailing context surrounding each match.  The default is 2 and is equivalent to -A 2 -B 2.");
         options.addOption("e","regexp",true, """
                             Specify a pattern used during the search of the input: an input
                             line is selected if it matches any of the specified patterns.
@@ -66,7 +64,7 @@ TODO: сделать подсчет строк до, после, номер ст
      * @param args args list that need to be parsed
      * @return CommandLineParser object with parsed Options.
      */
-    public static CommandLine OptionParser(Options options,String[] args){
+    public static CommandLine optionParser(Options options, String[] args){
         CommandLineParser parser = new DefaultParser();
 
         try {
@@ -75,7 +73,7 @@ TODO: сделать подсчет строк до, после, номер ст
 
             //TODO:move help initialisation to proper class
             if(cLine.hasOption("h")){
-                PrintHelp(options);
+                printHelp(options);
             }
 
             //TODO refactor code of saving values below
@@ -176,9 +174,130 @@ TODO: сделать подсчет строк до, после, номер ст
         return null;
     }
 
+    public static void printResult(String string, int matchLineNumber, File file,CommandLine commandLine) {
+        printResult(string, matchLineNumber, file, commandLine,false);
+    }
+
+    /***
+     * Prints matching line or context lines
+     * for match: filePath//fileName:[matchlineNumber]:[string]
+     * for contect: filePath//fileName-[matchlineNumber]-[string]
+     * @param string - String that should be print
+     * @param matchLineNumber - line index number
+     * @param file - file that have a matching line
+     * @param isContext - if true then print a context format
+     * @param commandLine - CommandLine Class that contains Options
+     */
+    public static void printResult(String string, int matchLineNumber, File file, CommandLine commandLine, boolean isContext) {
+        // print filepath and filename if there is more than one file or have a specified option
+        if (!commandLine.hasOption("h") && (filePath.size() > 1 || commandLine.hasOption("H"))) {
+            if (commandLine.hasOption("r")) {
+                System.out.print(file.getPath().replace(file.getName(),"")+ "/");
+            }
+            System.out.print(file.getName());
+            //print delimiter
+            if (isContext) {
+                System.out.print("-");
+            } else {
+                System.out.print(":");
+            }
+        }
+        // print matching line
+        if (commandLine.hasOption("n")) { // print line number
+            System.out.print(matchLineNumber);
+
+            //print delimiter
+            if (isContext) {
+                System.out.print("-");
+            } else {
+                System.out.print(":");
+            }
+        }
+        //print content
+        System.out.println(string);
+    }
+    /***
+     * Searches expr through the file and print matches depend on CommandLine options
+     * @param fileContentList - file
+     * @param commandLine - CommandLine with parsed options
+     * @param file - File name
+     */
+    public static void exprFinder(List<String> fileContentList, CommandLine commandLine, File file) {
+
+        ListIterator <String> fileContentIterator = fileContentList.listIterator();
+        boolean match = false;
+        int lineNum = 0;
+        int resultCount=0;
+        int ResultLimit = -1;
+
+        int afterContextSize = 0;
+        int beforeContextSize = 0;
+        List<String>  afterContext = Collections.emptyList();
+        List<String>  beforeContext = Collections.emptyList();
+
+        //define before and after context size
+        if(commandLine.hasOption("A")){
+            afterContextSize = Integer.parseInt(commandLine.getOptionValue("A"));
+        }
+        if(commandLine.hasOption("B")){
+            beforeContextSize = Integer.parseInt(commandLine.getOptionValue("B"));
+        }
+        if (commandLine.hasOption("C")){
+            afterContextSize = beforeContextSize = Integer.parseInt(commandLine.getOptionValue("C"));
+        }
+        // define output occurrences limit
+        if (commandLine.hasOption("m")){
+            ResultLimit = Integer.parseInt(commandLine.getOptionValue("m"));
+        }
+        //while there is next element and limit to ResultLimit
+        while (fileContentIterator.hasNext() && (ResultLimit ==-1 || resultCount <= ResultLimit)) {
+
+            String line = fileContentIterator.next();
+            //search for expressions in current line
+            for (String expr : expression) {
+                if (line.contains(expr)) {
+                    match = true;
+                    break;
+                }
+            }
+            if (match) {
+                resultCount++;
+                //print before context
+                // while there is previous index in list(there is at least one) and while not exceed context size
+                if(beforeContextSize>0){
+                    System.out.println("--");
+                    ListIterator<String> beforeContextIterator = fileContentList.listIterator(fileContentIterator.previousIndex());
+                    for(int i=0; beforeContextIterator.hasPrevious() && i < beforeContextSize;i++){
+                        printResult(beforeContextIterator.previous(),lineNum,file,commandLine,true);
+                    }
+                }
+                //print match
+                printResult(line,lineNum,file,commandLine);
+                //print after context
+                //while there is next index in list(check there is one) and while not exceed context size, start from a current position
+                if (afterContextSize >0){
+                    if (fileContentIterator.hasNext()){
+                        ListIterator<String> afterContextIterator = fileContentList.listIterator(fileContentIterator.nextIndex());
+                        for(int i=0; afterContextIterator.hasNext() && i<afterContextSize;i++){
+                            printResult(afterContextIterator.next(),lineNum,file,commandLine,true);
+                        }
+                    }
+                    System.out.println("--");
+                }
+                match = false;
+            }
+            lineNum++;
+        }
+        /*
+        if(resultCount == 0 && !commandLine.hasOption("h")){
+            System.out.println(file.getPath()+"/"+file.getPath()+" matches");
+        }
+        */
+    }
+
     public static void main(String[] args) {
-        args = new String[] {"-n", "-r","-m","4","-f","\"/Users/admin/downloads/Test/\"", "\'(i)\'","/Users/admin/IdeaProjects/grep/src/main/resources/testgrep.txt" };
-        CommandLine cLine = OptionParser(OptionBuilder(),args); //try to parse option and build the option list
+        //args = new String[] {"-n","-C","2","-f","\"/Users/admin/downloads/Test/\"", "\'(i)'","/Users/admin/IdeaProjects/grep/src/main/resources/testgrep.txt" };
+        CommandLine cLine = optionParser(optionBuilder(),args); //try to parse option and build the option list
 
         ListIterator<String> fileIterator = filePath.listIterator();
 
@@ -204,39 +323,8 @@ TODO: сделать подсчет строк до, после, номер ст
                 }
                 else { //handle a file
                     try (BufferedReader fileReader = new BufferedReader(new FileReader(file))) {
-                        String line;
-                        boolean match = false;
-                        int lineNum = 0;
-                        int resultCount=0;
-                        String []  afterContext;
-                        String []  beforeContext;
-                        int lineLimit = -1;
-
-                        if (cLine.hasOption("m")){
-                            lineLimit = Integer.parseInt(cLine.getOptionValue("m"));
-                        }
-                        while ((line = fileReader.readLine()) != null && (lineLimit ==-1 || resultCount <= lineLimit)) {
-
-                            for (String expr : expression) {
-                                if (line.contains(expr)) {
-                                    match = true;
-                                    break;
-                                }
-                            }
-                            if (match) {
-                                resultCount++;
-                                if (!cLine.hasOption("h") && (filePath.size() > 1 || cLine.hasOption("H"))) { // print filename if there is more than one file or have a specified option
-                                    System.out.print(file.getName() + ": ");
-                                }
-                                if (cLine.hasOption("n")) { // print line number
-                                    System.out.print(lineNum + ": ");
-                                }
-                                System.out.println(line);
-                                match = false;
-                            }
-                            lineNum++;
-                        }
-
+                        List<String> fileContentList = fileReader.lines().collect(Collectors.toList());
+                        exprFinder(fileContentList,cLine,file);
                     }
                 catch (IOException e) {
                     System.err.println("File error " + e.getMessage());
