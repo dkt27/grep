@@ -8,9 +8,7 @@ import java.util.stream.Collectors;
 
 public class Main {
 /*
-TODO: прикрутить CLI
 TODO: сделать обработку файлов по маске
-TODO: сделать подсчет строк до, после, номер строки
 * */
 
 
